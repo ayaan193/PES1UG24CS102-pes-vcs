@@ -179,10 +179,16 @@ int head_update(const ObjectID *new_commit) {
     line[strcspn(line, "\r\n")] = '\0';
 
     char target_path[520];
-    if (strncmp(line, "ref: ", 5) == 0)
+
+    if (strncmp(line, "ref: ", 5) == 0) {
         snprintf(target_path, sizeof(target_path), "%s/%s", PES_DIR, line + 5);
-    else
+
+        // ✅ FIX: ensure directory exists
+        mkdir(".pes/refs", 0755);
+        mkdir(".pes/refs/heads", 0755);
+    } else {
         snprintf(target_path, sizeof(target_path), "%s", HEAD_FILE);
+    }
 
     char tmp_path[528];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", target_path);
