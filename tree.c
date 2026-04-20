@@ -92,45 +92,65 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
     return 0;
 }
 
-// ─── COMMIT 2 IMPLEMENTATION ───────────────────────────────────────────────
+// ─── COMMIT 3 IMPLEMENTATION ───────────────────────────────────────────────
 
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
-
     if (index_load(&idx) < 0) {
         return -1;
     }
+
+    Tree tree;
+    tree.count = 0;
 
     for (size_t i = 0; i < idx.count; i++) {
 
         IndexEntry *e = &idx.entries[i];
         const char *path = e->path;
 
-        // Check if path contains a directory
         const char *slash = strchr(path, '/');
 
         if (slash) {
-            // Directory entry case
+            // Directory placeholder entry
+
             size_t dir_len = slash - path;
 
             char dirname[256];
             strncpy(dirname, path, dir_len);
             dirname[dir_len] = '\0';
 
-            // DEBUG (optional)
-            // printf("Directory: %s → child: %s\n", dirname, slash + 1);
+            // Add directory entry ONLY ONCE (basic check)
+            int exists = 0;
+            for (int j = 0; j < tree.count; j++) {
+                if (strcmp(tree.entries[j].name, dirname) == 0) {
+                    exists = 1;
+                    break;
+                }
+            }
+
+            if (!exists && tree.count < MAX_TREE_ENTRIES) {
+                TreeEntry *entry = &tree.entries[tree.count++];
+
+                entry->mode = MODE_DIR;
+                strncpy(entry->name, dirname, sizeof(entry->name));
+                memset(entry->hash.hash, 0, HASH_SIZE); // placeholder
+            }
 
         } else {
-            // Root-level file
-            const char *name = path;
+            // File entry
 
-            // DEBUG (optional)
-            // printf("File: %s\n", name);
+            if (tree.count < MAX_TREE_ENTRIES) {
+                TreeEntry *entry = &tree.entries[tree.count++];
+
+                entry->mode = e->mode;
+                strncpy(entry->name, path, sizeof(entry->name));
+                entry->hash = e->hash;
+            }
         }
     }
 
-    // Still no tree construction yet
+    // Still not writing tree yet
     memset(id_out, 0, sizeof(ObjectID));
     return 0;
 }
