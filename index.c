@@ -1,4 +1,4 @@
-// index.c — Commit 4
+// index.c — Commit 5 (matches final logic)
 
 #include "index.h"
 #include <stdio.h>
@@ -11,7 +11,7 @@
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
-// PROVIDED (same as commit 3)
+// PROVIDED
 
 IndexEntry* index_find(Index *index, const char *path) {
     for (int i = 0; i < index->count; i++) {
@@ -44,7 +44,7 @@ int index_status(const Index *index) {
     return 0;
 }
 
-// LOAD (same)
+// LOAD
 
 int index_load(Index *index) {
     index->count = 0;
@@ -68,22 +68,35 @@ int index_load(Index *index) {
     return 0;
 }
 
-// SAVE (atomic)
+// SORT HELPER
+
+static int cmp_entries(const void *a, const void *b) {
+    const IndexEntry *ea = a;
+    const IndexEntry *eb = b;
+    return strcmp(ea->path, eb->path);
+}
+
+// SAVE (sorted + atomic)
 
 int index_save(const Index *index) {
+    Index temp = *index;
+
+    qsort(temp.entries, temp.count,
+          sizeof(IndexEntry), cmp_entries);
+
     FILE *fp = fopen(".pes/index.tmp", "w");
     if (!fp) return -1;
 
-    for (int i = 0; i < index->count; i++) {
+    for (int i = 0; i < temp.count; i++) {
         char hex[HASH_HEX_SIZE + 1];
-        hash_to_hex(&index->entries[i].hash, hex);
+        hash_to_hex(&temp.entries[i].hash, hex);
 
         fprintf(fp, "%o %s %ld %u %s\n",
-                index->entries[i].mode,
+                temp.entries[i].mode,
                 hex,
-                index->entries[i].mtime_sec,
-                index->entries[i].size,
-                index->entries[i].path);
+                temp.entries[i].mtime_sec,
+                temp.entries[i].size,
+                temp.entries[i].path);
     }
 
     fflush(fp);
@@ -95,14 +108,16 @@ int index_save(const Index *index) {
     return 0;
 }
 
-// ADD (same as commit 3)
+// ADD
 
 int index_add(Index *index, const char *path) {
     struct stat st;
-    if (stat(path, &st) != 0) return -1;
+    if (stat(path, &st) != 0)
+        return -1;
 
     FILE *fp = fopen(path, "rb");
-    if (!fp) return -1;
+    if (!fp)
+        return -1;
 
     uint8_t *buf = malloc(st.st_size ? st.st_size : 1);
     if (!buf) {
@@ -126,7 +141,7 @@ int index_add(Index *index, const char *path) {
 
     IndexEntry *e = index_find(index, path);
 
-    if (!e) {
+    if (e == NULL) {
         if (index->count >= MAX_INDEX_ENTRIES)
             return -1;
         e = &index->entries[index->count++];
