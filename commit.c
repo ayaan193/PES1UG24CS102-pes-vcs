@@ -15,26 +15,28 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out);
 
 // ─── PROVIDED (UNCHANGED) ─────────────────────────────────────────────
-// (keep all same)
 
 // ─── IMPLEMENTATION ───────────────────────────────────────────────────
 
 int commit_create(const char *message, ObjectID *commit_id_out) {
 
     Index index;
-    if (index_load(&index) != 0)
+    if (index_load(&index) != 0) {
+        fprintf(stderr, "commit: failed to load index\n");
         return -1;
+    }
 
     ObjectID tree_id;
-    if (tree_from_index(&index, &tree_id) != 0)
+    if (tree_from_index(&index, &tree_id) != 0) {
+        fprintf(stderr, "commit: failed to build tree\n");
         return -1;
+    }
 
     Commit c;
     memset(&c, 0, sizeof(Commit));
 
     c.tree = tree_id;
 
-    // 🔥 NEW: parent handling
     ObjectID parent_id;
     if (head_read(&parent_id) == 0) {
         c.parent = parent_id;
@@ -47,19 +49,26 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     c.timestamp = (uint64_t)time(NULL);
     snprintf(c.message, sizeof(c.message), "%s", message);
 
-    void *data;
-    size_t len;
-    if (commit_serialize(&c, &data, &len) != 0)
+    void *data = NULL;
+    size_t len = 0;
+
+    if (commit_serialize(&c, &data, &len) != 0) {
+        fprintf(stderr, "commit: serialize failed\n");
         return -1;
+    }
 
     if (object_write(OBJ_COMMIT, data, len, commit_id_out) != 0) {
+        fprintf(stderr, "commit: object write failed\n");
         free(data);
         return -1;
     }
+
     free(data);
 
-    if (head_update(commit_id_out) != 0)
+    if (head_update(commit_id_out) != 0) {
+        fprintf(stderr, "commit: head update failed\n");
         return -1;
+    }
 
     return 0;
 }
