@@ -52,18 +52,19 @@ int object_exists(const ObjectID *id) {
 // ─── TODO: Implement these ──────────────────────────────────────────────────
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // Step 1: Convert type enum → string
+
+    // Step 1: Convert enum → string
     const char *type_str;
     if (type == OBJ_BLOB) type_str = "blob";
     else if (type == OBJ_TREE) type_str = "tree";
     else type_str = "commit";
 
-    // Step 2: Build header "type size"
+    // Step 2: Build header
     char header[64];
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
-    int full_header_len = header_len + 1; // include '\0'
+    int full_header_len = header_len + 1;
 
-    // Step 3: Allocate buffer for full object
+    // Step 3: Allocate buffer
     size_t total_size = full_header_len + len;
     unsigned char *store = malloc(total_size);
     if (!store) return -1;
@@ -73,20 +74,27 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     store[header_len] = '\0';
     memcpy(store + full_header_len, data, len);
 
-    // ─── COMMIT 2 ADDITION ───
-    // Step 5: Compute SHA-256 hash of full object
+    // Step 5: Compute hash (Commit 2)
     ObjectID id;
     compute_hash(store, total_size, &id);
 
-    // For now: just return hash, do NOT write to disk yet
-    *id_out = id;
+    // ─── COMMIT 3 ADDITION ───
+    // Step 6: Deduplication check
+    if (object_exists(&id)) {
+        *id_out = id;
+        free(store);
+        return 0;
+    }
 
+    // NOTE: No writing yet (Commit 4 will handle that)
+
+    *id_out = id;
     free(store);
     return 0;
 }
 
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // Not implemented yet (Phase 1 later commit)
+    // Not implemented yet
     (void)id;
     (void)type_out;
     (void)data_out;
