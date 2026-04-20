@@ -1,15 +1,17 @@
-// index.c — Commit 3
+// index.c — Commit 4
 
 #include "index.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "pes.h"
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
-// PROVIDED
+// PROVIDED (same as commit 3)
 
 IndexEntry* index_find(Index *index, const char *path) {
     for (int i = 0; i < index->count; i++) {
@@ -42,7 +44,7 @@ int index_status(const Index *index) {
     return 0;
 }
 
-// LOAD
+// LOAD (same)
 
 int index_load(Index *index) {
     index->count = 0;
@@ -66,10 +68,10 @@ int index_load(Index *index) {
     return 0;
 }
 
-// SAVE (no atomic yet)
+// SAVE (atomic)
 
 int index_save(const Index *index) {
-    FILE *fp = fopen(".pes/index", "w");
+    FILE *fp = fopen(".pes/index.tmp", "w");
     if (!fp) return -1;
 
     for (int i = 0; i < index->count; i++) {
@@ -84,11 +86,16 @@ int index_save(const Index *index) {
                 index->entries[i].path);
     }
 
+    fflush(fp);
+    fsync(fileno(fp));
     fclose(fp);
+
+    rename(".pes/index.tmp", ".pes/index");
+
     return 0;
 }
 
-// ADD (correct logic)
+// ADD (same as commit 3)
 
 int index_add(Index *index, const char *path) {
     struct stat st;
