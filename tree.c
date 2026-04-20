@@ -24,9 +24,9 @@ uint32_t get_file_mode(const char *path) {
     return MODE_FILE;
 }
 
-// (tree_parse and tree_serialize unchanged — keep from skeleton)
+// tree_parse and tree_serialize remain unchanged from skeleton
 
-// ─── HELPER: Recursive tree builder ─────────────────────────────────────────
+// ─── HELPER: Recursive builder ─────────────────────────────────────────────
 
 static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
 
@@ -39,18 +39,16 @@ static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
 
         IndexEntry *e = &idx->entries[i];
 
-        // Skip entries not under this prefix
         if (strncmp(e->path, prefix, prefix_len) != 0) continue;
 
         const char *rel_path = e->path + prefix_len;
 
-        // Skip deeper levels for now
         if (rel_path[0] == '\0') continue;
 
         const char *slash = strchr(rel_path, '/');
 
         if (!slash) {
-            // FILE at this level
+            // File entry
             if (tree.count < MAX_TREE_ENTRIES) {
                 TreeEntry *entry = &tree.entries[tree.count++];
 
@@ -60,7 +58,7 @@ static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
             }
 
         } else {
-            // DIRECTORY at this level
+            // Directory entry
 
             size_t dir_len = slash - rel_path;
 
@@ -68,7 +66,7 @@ static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
             strncpy(dirname, rel_path, dir_len);
             dirname[dir_len] = '\0';
 
-            // Avoid duplicate dirs
+            // Avoid duplicates
             int exists = 0;
             for (int j = 0; j < tree.count; j++) {
                 if (strcmp(tree.entries[j].name, dirname) == 0) {
@@ -79,7 +77,6 @@ static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
 
             if (!exists && tree.count < MAX_TREE_ENTRIES) {
 
-                // Build new prefix for recursion
                 char new_prefix[512];
                 snprintf(new_prefix, sizeof(new_prefix), "%s%s/", prefix, dirname);
 
@@ -96,12 +93,25 @@ static int build_tree_level(Index *idx, const char *prefix, ObjectID *out_id) {
         }
     }
 
-    // For now, do NOT serialize/write yet (next commit)
-    memset(out_id, 0, sizeof(ObjectID));
+    // ─── FINAL STEP (Commit 5) ───
+
+    void *data = NULL;
+    size_t len = 0;
+
+    if (tree_serialize(&tree, &data, &len) < 0) {
+        return -1;
+    }
+
+    if (object_write(OBJ_TREE, data, len, out_id) < 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
     return 0;
 }
 
-// ─── MAIN FUNCTION ─────────────────────────────────────────────────────────
+// ─── MAIN ENTRY ────────────────────────────────────────────────────────────
 
 int tree_from_index(ObjectID *id_out) {
 
@@ -110,10 +120,5 @@ int tree_from_index(ObjectID *id_out) {
         return -1;
     }
 
-    // Start recursion from root ("")
-    if (build_tree_level(&idx, "", id_out) < 0) {
-        return -1;
-    }
-
-    return 0;
+    return build_tree_level(&idx, "", id_out);
 }
