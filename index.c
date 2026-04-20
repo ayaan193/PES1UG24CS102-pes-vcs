@@ -1,64 +1,82 @@
 #include "index.h"
-#include "pes.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include "pes.h"
 
-#define INDEX_FILE ".pes/index"
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
-// ─── LOAD INDEX FROM DISK ────────────────────────────────────────────────
+// LOAD
+int index_load(Index *index) {
+    index->count = 0;
 
-int index_load(Index *idx) {
-    if (!idx) return -1;
+    FILE *fp = fopen(".pes/index", "r");
+    if (!fp) return 0;
 
-    FILE *f = fopen(INDEX_FILE, "rb");
-    if (!f) {
-        // If index doesn't exist → treat as empty
-        idx->count = 0;
-        return 0;
+    while (index->count < MAX_INDEX_ENTRIES) {
+        IndexEntry *e = &index->entries[index->count];
+        char hex[HASH_HEX_SIZE + 1];
+
+        if (fscanf(fp, "%o %64s %ld %u %255[^\n]\n",
+                   &e->mode, hex, &e->mtime_sec, &e->size, e->path) != 5)
+            break;
+
+        hex_to_hash(hex, &e->hash);
+        index->count++;
     }
 
-    // Read count
-    if (fread(&idx->count, sizeof(int), 1, f) != 1) {
-        fclose(f);
-        return -1;
-    }
-
-    if (idx->count < 0 || idx->count > MAX_INDEX_ENTRIES) {
-        fclose(f);
-        return -1;
-    }
-
-    // Read entries
-    if (fread(idx->entries, sizeof(IndexEntry), idx->count, f) != (size_t)idx->count) {
-        fclose(f);
-        return -1;
-    }
-
-    fclose(f);
+    fclose(fp);
     return 0;
 }
 
-// ─── SAVE INDEX TO DISK ────────────────────────────────────────────────
+// SAVE (no atomicity yet)
+int index_save(const Index *index) {
+    FILE *fp = fopen(".pes/index", "w");
+    if (!fp) return -1;
 
-int index_save(const Index *idx) {
-    if (!idx) return -1;
+    for (int i = 0; i < index->count; i++) {
+        char hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&index->entries[i].hash, hex);
 
-    FILE *f = fopen(INDEX_FILE, "wb");
-    if (!f) return -1;
-
-    // Write count
-    if (fwrite(&idx->count, sizeof(int), 1, f) != 1) {
-        fclose(f);
-        return -1;
+        fprintf(fp, "%o %s %ld %u %s\n",
+                index->entries[i].mode,
+                hex,
+                index->entries[i].mtime_sec,
+                index->entries[i].size,
+                index->entries[i].path);
     }
 
-    // Write entries
-    if (fwrite(idx->entries, sizeof(IndexEntry), idx->count, f) != (size_t)idx->count) {
-        fclose(f);
-        return -1;
-    }
-
-    fclose(f);
+    fclose(fp);
     return 0;
+}
+
+// ADD (basic)
+int index_add(Index *index, const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return -1;
+
+    uint8_t *buf = malloc(st.st_size ? st.st_size : 1);
+    fread(buf, 1, st.st_size, fp);
+    fclose(fp);
+
+    ObjectID id;
+    object_write(OBJ_BLOB, buf, st.st_size, &id);
+    free(buf);
+
+    IndexEntry *e = index_find(index, path);
+    if (!e) {
+        e = &index->entries[index->count++];
+    }
+
+    strcpy(e->path, path);
+    e->mode = 0100644;
+    e->hash = id;
+    e->mtime_sec = st.st_mtime;
+    e->size = st.st_size;
+
+    return index_save(index);
 }
