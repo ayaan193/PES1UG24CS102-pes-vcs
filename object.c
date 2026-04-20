@@ -1,5 +1,3 @@
-// object.c — Content-addressable object store
-
 #include "pes.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,7 +47,7 @@ int object_exists(const ObjectID *id) {
     return access(path, F_OK) == 0;
 }
 
-// ─── IMPLEMENTATION ──────────────────────────────────────────────────────────
+// ─── IMPLEMENTATION ─────────────────────────────────────────────────────────
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
 
@@ -58,10 +56,12 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     else if (type == OBJ_TREE) type_str = "tree";
     else type_str = "commit";
 
+    // Build header
     char header[64];
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
     int full_header_len = header_len + 1;
 
+    // Build full object
     size_t total_size = full_header_len + len;
     unsigned char *store = malloc(total_size);
     if (!store) return -1;
@@ -70,25 +70,36 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     store[header_len] = '\0';
     memcpy(store + full_header_len, data, len);
 
+    // Compute hash
     ObjectID id;
     compute_hash(store, total_size, &id);
 
+    // Deduplication
     if (object_exists(&id)) {
         *id_out = id;
         free(store);
         return 0;
     }
 
+    // Get final path
     char path[512];
     object_path(&id, path, sizeof(path));
 
+    // Extract directory path
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s/%.2x%.2x",
-             OBJECTS_DIR, id.hash[0], id.hash[1]);
+    strncpy(dir, path, sizeof(dir));
+    char *slash = strrchr(dir, '/');
+    if (!slash) {
+        free(store);
+        return -1;
+    }
+    *slash = '\0';
 
+    // Create directories
     mkdir(OBJECTS_DIR, 0755);
     mkdir(dir, 0755);
 
+    // Temp file
     char temp_path[512];
     snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
 
@@ -107,11 +118,13 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     fsync(fd);
     close(fd);
 
+    // Atomic rename
     if (rename(temp_path, path) < 0) {
         free(store);
         return -1;
     }
 
+    // fsync directory
     int dir_fd = open(dir, O_RDONLY);
     if (dir_fd >= 0) {
         fsync(dir_fd);
@@ -123,7 +136,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     return 0;
 }
 
-// ─── COMMIT 5: object_read ──────────────────────────────────────────────────
+// ─── READ IMPLEMENTATION ────────────────────────────────────────────────────
 
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
 
@@ -143,7 +156,11 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
-    fread(buffer, 1, file_size, f);
+    if (fread(buffer, 1, file_size, f) != file_size) {
+        free(buffer);
+        fclose(f);
+        return -1;
+    }
     fclose(f);
 
     // Verify integrity
@@ -164,7 +181,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
 
     *data_start = '\0';
 
-    // Determine type
+    // Parse type
     if (strncmp((char *)buffer, "blob", 4) == 0)
         *type_out = OBJ_BLOB;
     else if (strncmp((char *)buffer, "tree", 4) == 0)
@@ -176,7 +193,6 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     size_t size;
     sscanf((char *)buffer, "%*s %zu", &size);
 
-    // Extract data
     void *data = malloc(size);
     memcpy(data, data_start + 1, size);
 
