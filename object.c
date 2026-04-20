@@ -74,19 +74,64 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     store[header_len] = '\0';
     memcpy(store + full_header_len, data, len);
 
-    // Step 5: Compute hash (Commit 2)
+    // Step 5: Compute hash
     ObjectID id;
     compute_hash(store, total_size, &id);
 
-    // ─── COMMIT 3 ADDITION ───
-    // Step 6: Deduplication check
+    // Step 6: Deduplication
     if (object_exists(&id)) {
         *id_out = id;
         free(store);
         return 0;
     }
 
-    // NOTE: No writing yet (Commit 4 will handle that)
+    // ─── COMMIT 4 ADDITION ───
+
+    // Step 7: Build final path
+    char path[512];
+    object_path(&id, path, sizeof(path));
+
+    // Extract directory (.pes/objects/XX)
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/%.2x%.2x",
+             OBJECTS_DIR, id.hash[0], id.hash[1]);
+
+    // Ensure directories exist
+    mkdir(OBJECTS_DIR, 0755);
+    mkdir(dir, 0755);
+
+    // Step 8: Temp file path
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) {
+        free(store);
+        return -1;
+    }
+
+    if (write(fd, store, total_size) != (ssize_t)total_size) {
+        close(fd);
+        free(store);
+        return -1;
+    }
+
+    // Flush file to disk
+    fsync(fd);
+    close(fd);
+
+    // Step 9: Atomic rename
+    if (rename(temp_path, path) < 0) {
+        free(store);
+        return -1;
+    }
+
+    // Step 10: fsync directory (persist rename)
+    int dir_fd = open(dir, O_RDONLY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
 
     *id_out = id;
     free(store);
