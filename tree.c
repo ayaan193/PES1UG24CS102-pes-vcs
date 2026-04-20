@@ -92,36 +92,45 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
     return 0;
 }
 
-// ─── COMMIT 1 IMPLEMENTATION ───────────────────────────────────────────────
+// ─── COMMIT 2 IMPLEMENTATION ───────────────────────────────────────────────
 
 int tree_from_index(ObjectID *id_out) {
 
     Index idx;
 
-    // Step 1: Load index
     if (index_load(&idx) < 0) {
         return -1;
     }
 
-    // Step 2: Iterate entries
     for (size_t i = 0; i < idx.count; i++) {
 
         IndexEntry *e = &idx.entries[i];
-
         const char *path = e->path;
 
-        // Extract filename (ignore directories for now)
-        const char *name = strrchr(path, '/');
-        name = (name) ? name + 1 : path;
+        // Check if path contains a directory
+        const char *slash = strchr(path, '/');
 
-        // DEBUG (optional, remove later)
-        // printf("File: %s → name: %s\n", path, name);
+        if (slash) {
+            // Directory entry case
+            size_t dir_len = slash - path;
 
-        // No tree building yet — next commits
+            char dirname[256];
+            strncpy(dirname, path, dir_len);
+            dirname[dir_len] = '\0';
+
+            // DEBUG (optional)
+            // printf("Directory: %s → child: %s\n", dirname, slash + 1);
+
+        } else {
+            // Root-level file
+            const char *name = path;
+
+            // DEBUG (optional)
+            // printf("File: %s\n", name);
+        }
     }
 
-    // Temporary: return empty tree hash
+    // Still no tree construction yet
     memset(id_out, 0, sizeof(ObjectID));
-
     return 0;
 }
