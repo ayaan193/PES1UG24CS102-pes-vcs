@@ -102,7 +102,7 @@ else type_str = "commit";
 
 char header[64];
 int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
-int full_header_len = header_len + 1; // for '\0'
+int full_header_len = header_len + 1;
 
 size_t total_size = full_header_len + len;
 unsigned char *store = malloc(total_size);
@@ -111,6 +111,10 @@ if (!store) return -1;
 memcpy(store, header, header_len);
 store[header_len] = '\0';
 memcpy(store + full_header_len, data, len);
+
+/* TEMPORARY (for commit 1 only) */
+free(store);
+return 0;
 }
 
 // Read an object from the store.
@@ -137,6 +141,20 @@ memcpy(store + full_header_len, data, len);
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
     // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    (const char *type_str;
+if (type == OBJ_BLOB) type_str = "blob";
+else if (type == OBJ_TREE) type_str = "tree";
+else type_str = "commit";
+
+char header[64];
+int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
+int full_header_len = header_len + 1; // for '\0'
+
+size_t total_size = full_header_len + len;
+unsigned char *store = malloc(total_size);
+if (!store) return -1;
+
+memcpy(store, header, header_len);
+store[header_len] = '\0';
+memcpy(store + full_header_len, data, len);
 }
